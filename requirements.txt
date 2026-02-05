@@ -1,0 +1,40 @@
+# AI Beauty Muse Backend Dependencies
+
+# Web Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+
+# HTTP Client
+httpx==0.26.0
+aiohttp==3.9.1
+
+# Data Validation
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Database
+sqlalchemy==2.0.25
+aiosqlite==0.19.0
+
+# AI/ML
+openai==1.12.0
+pillow==10.2.0
+numpy==1.26.3
+
+# Chinese Calendar & Astrology
+lunarcalendar==0.0.9
+cnlunar==0.1.1
+
+# Utilities
+python-dotenv==1.0.0
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Testing
+pytest==7.4.4
+pytest-asyncio==0.23.3
+httpx==0.26.0
+
+# CORS
+starlette==0.35.1
