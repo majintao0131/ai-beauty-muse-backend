@@ -64,9 +64,17 @@ ai-beauty-muse-backend/
 │   └── utils/
 ├── tests/                    # 測試文件
 ├── docs/                     # 文檔
+│   ├── 产品需求和技术接口文档.md   # 产品需求 + 全部 API 接口说明（统一入口）
+│   ├── 服务端部署文档.md           # 数据库独立部署 + 应用部署
+│   └── DEV_开发环境快速登录.md
 ├── requirements.txt          # 依賴
 └── README.md
 ```
+
+## 文檔
+
+- **[产品需求和技术接口文档](docs/产品需求和技术接口文档.md)**：产品需求概述与全部技术接口（认证、分析、发型、命理、每日能量、历史报告、报告落地、清理历史等）。
+- **[服务端部署文档](docs/服务端部署文档.md)**：数据库独立部署与建表、应用部署（uvicorn / systemd / Docker）。
 
 ## 快速開始
 
@@ -236,6 +244,10 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 docker build -t ai-beauty-muse-backend .
 docker run -p 8000:8000 -e OPENAI_API_KEY=your-key ai-beauty-muse-backend
 ```
+
+### 服务端部署（含数据库独立部署）
+
+生产环境部署（数据库独立 + 应用服务）请参考：[**docs/服务端部署文档.md**](docs/服务端部署文档.md)。文档包含：数据库独立部署与建表（MySQL 8 / PostgreSQL 14）、环境变量、直接运行 / systemd / Docker 三种应用部署方式及健康检查与验证。
 
 ## 注意事項
 

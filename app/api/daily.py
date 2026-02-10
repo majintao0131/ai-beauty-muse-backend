@@ -2,21 +2,31 @@
 AI Beauty Muse - Daily Energy API Routes
 Handles daily energy guidance and outfit recommendations.
 """
-from fastapi import APIRouter, HTTPException
+from typing import Optional
 
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.dependencies import get_optional_user
+from app.models.database import get_db, User
 from app.models.schemas import (
     DailyEnergyRequest,
     DailyEnergyResponse,
     ColorInfo,
 )
 from app.services.daily_energy_service import daily_energy_service
+from app.services.history_service import history_service
 
 
 router = APIRouter(prefix="/daily", tags=["Daily Energy"])
 
 
 @router.post("/energy", response_model=DailyEnergyResponse)
-async def get_daily_energy(request: DailyEnergyRequest):
+async def get_daily_energy(
+    request: DailyEnergyRequest,
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Get daily energy guidance and outfit recommendations.
     
@@ -45,7 +55,7 @@ async def get_daily_energy(request: DailyEnergyRequest):
         # Convert lucky colors to ColorInfo objects
         lucky_colors = [ColorInfo(**c) for c in result.get("lucky_colors", [])]
         
-        return DailyEnergyResponse(
+        response = DailyEnergyResponse(
             date=result.get("date", ""),
             daily_stem_branch=result.get("daily_stem_branch", ""),
             five_elements_energy=result.get("five_elements_energy", ""),
@@ -55,6 +65,22 @@ async def get_daily_energy(request: DailyEnergyRequest):
             energy_tips=result.get("energy_tips", ""),
             occasion_special=result.get("occasion_special"),
         )
+
+        # ---- Auto-save to history (only for logged-in users) ----
+        if current_user:
+            try:
+                await history_service.save_report(
+                    db=db,
+                    user_id=current_user.id,
+                    report_type="daily_energy",
+                    title=f"每日能量 — {response.date}",
+                    data=response.model_dump(mode="json"),
+                    summary=response.energy_tips[:100] if response.energy_tips else None,
+                )
+            except Exception:
+                pass
+
+        return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Daily energy calculation failed: {str(e)}")
 

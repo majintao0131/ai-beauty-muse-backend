@@ -1,15 +1,18 @@
 """
 AI Beauty Muse - FastAPI Main Application
 """
+from pathlib import Path
 from datetime import datetime
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.models.schemas import HealthResponse
-from app.api import analysis, hairstyle, destiny, daily, chat
+from app.models.database import init_db
+from app.api import analysis, hairstyle, destiny, daily, chat, auth, membership, history
 
 
 @asynccontextmanager
@@ -17,6 +20,16 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
     print(f"🚀 Starting {settings.app_name} v{settings.app_version}")
+    await init_db()
+    print("📦 Database tables initialised")
+    # Ensure upload directories exist
+    edited_dir = Path(settings.upload_dir) / settings.edited_images_subdir
+    edited_dir.mkdir(parents=True, exist_ok=True)
+    beauty_dir = Path(settings.upload_dir) / "beauty"
+    beauty_dir.mkdir(parents=True, exist_ok=True)
+    face_dir = Path(settings.upload_dir) / "face"
+    face_dir.mkdir(parents=True, exist_ok=True)
+    print(f"📁 Upload directory ready: {edited_dir.resolve()}")
     print(f"📍 Server running at http://{settings.host}:{settings.port}")
     print(f"📚 API docs available at http://{settings.host}:{settings.port}/docs")
     yield
@@ -37,18 +50,25 @@ AI-powered beauty and styling assistant API providing:
 - **Face Analysis**: Analyze face shape and get personalized recommendations
 - **Color Diagnosis**: Determine personal color type and get color palette
 - **Body Analysis**: Analyze body type and get styling recommendations
+- **Photo Editing**: Upload photo + instructions → AI-generated modified portrait
 - **Hairstyle Generation**: AI-generated hairstyle previews
 - **Destiny Analysis**: BaZi-based color and styling recommendations
 - **Daily Energy**: Daily outfit and energy guidance
-- **AI Chat**: Interactive beauty assistant
+- **AI Chat**: Interactive beauty assistant with server-side session management
 
 ## Authentication
 
-Currently, all endpoints are public. Authentication will be added in future versions.
+Phone-based JWT authentication:
+1. Call `POST /api/v1/auth/sms/send` with phone number to get verification code
+2. Call `POST /api/v1/auth/sms/login` with phone + code to login/register and get Bearer token
+3. Include token in all authenticated requests: `Authorization: Bearer <token>`
 
-## Rate Limiting
+Legacy device-based auth (`POST /api/v1/auth/register`) is still supported.
 
-Please be mindful of API usage. Rate limiting may be implemented in future versions.
+## Chat Sessions
+
+Chat history is managed server-side.  Create a session via
+`POST /api/v1/chat/sessions`, then send messages referencing the `session_id`.
     """,
     version=settings.app_version,
     lifespan=lifespan,
@@ -64,11 +84,19 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(auth.router, prefix="/api/v1")
+app.include_router(membership.router, prefix="/api/v1")
+app.include_router(history.router, prefix="/api/v1")
 app.include_router(analysis.router, prefix="/api/v1")
 app.include_router(hairstyle.router, prefix="/api/v1")
 app.include_router(destiny.router, prefix="/api/v1")
 app.include_router(daily.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
+
+# Serve uploaded / generated images as static files
+# Images saved to  uploads/edited/xxx.png  →  GET /uploads/edited/xxx.png
+Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
 
 
 @app.get("/", tags=["Root"])
@@ -99,10 +127,26 @@ async def api_info():
     return {
         "version": "v1",
         "endpoints": {
+            "auth": {
+                "sms_send": "/api/v1/auth/sms/send  [POST] 发送验证码",
+                "sms_login": "/api/v1/auth/sms/login  [POST] 手机号登录/注册",
+                "register": "/api/v1/auth/register  [POST] 设备登录 (legacy)",
+                "refresh": "/api/v1/auth/refresh  [POST] 刷新 token",
+                "me": "/api/v1/auth/me  [GET] 个人信息+配额",
+            },
+            "membership": {
+                "subscribe": "/api/v1/membership/subscribe  [POST] 订阅会员",
+                "status": "/api/v1/membership/status  [GET] 会员状态",
+                "quota": "/api/v1/membership/quota  [GET] 使用次数查询",
+            },
             "analysis": {
                 "face": "/api/v1/analysis/face",
+                "face_style": "/api/v1/analysis/face-style  [POST multipart/form-data]",
+                "face_edit": "/api/v1/analysis/face-edit  [POST multipart/form-data: image + instructions]",
+                "hair_color_experiment": "/api/v1/analysis/hair-color-experiment  [POST multipart/form-data: image + hair_color]",
                 "color": "/api/v1/analysis/color",
                 "body": "/api/v1/analysis/body",
+                "landing_suggestion": "/api/v1/analysis/landing-suggestion  [POST JSON: 多模块数据]",
             },
             "hairstyle": {
                 "generate": "/api/v1/hairstyle/generate",
@@ -117,7 +161,9 @@ async def api_info():
                 "quick": "/api/v1/daily/quick",
             },
             "chat": {
-                "chat": "/api/v1/chat/",
+                "sessions": "/api/v1/chat/sessions",
+                "send_message": "/api/v1/chat/",
+                "history": "/api/v1/chat/sessions/{session_id}/history",
                 "suggestions": "/api/v1/chat/suggestions",
             },
         },
