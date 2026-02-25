@@ -7,12 +7,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.models.schemas import HealthResponse
 from app.models.database import init_db
-from app.api import analysis, hairstyle, destiny, daily, chat, auth, membership, history
+from app.api import analysis, hairstyle, destiny, daily, chat, auth, membership, history, media
 
 
 @asynccontextmanager
@@ -92,11 +91,10 @@ app.include_router(hairstyle.router, prefix="/api/v1")
 app.include_router(destiny.router, prefix="/api/v1")
 app.include_router(daily.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
+app.include_router(media.router, prefix="/api/v1")
 
-# Serve uploaded / generated images as static files
-# Images saved to  uploads/edited/xxx.png  →  GET /uploads/edited/xxx.png
+# 图片通过鉴权接口 GET /api/v1/media/{path} 获取，不再公开挂载 /uploads
 Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
 
 
 @app.get("/", tags=["Root"])
@@ -166,6 +164,9 @@ async def api_info():
                 "send_message": "/api/v1/chat/",
                 "history": "/api/v1/chat/sessions/{session_id}/history",
                 "suggestions": "/api/v1/chat/suggestions",
+            },
+            "media": {
+                "protected_image": "/api/v1/media/{path}  [GET] 鉴权获取图片，需 Bearer token",
             },
         },
     }

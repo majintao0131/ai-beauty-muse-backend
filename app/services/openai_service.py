@@ -568,7 +568,8 @@ class OpenAIService:
             f":generateContent?key={self._gemini_api_key}"
         )
 
-        async with httpx.AsyncClient(timeout=180, proxy=self._http_proxy) as http:
+        timeout_sec = getattr(settings, "gemini_request_timeout_seconds", 300) or 300
+        async with httpx.AsyncClient(timeout=timeout_sec, proxy=self._http_proxy) as http:
             resp = await http.post(
                 url,
                 headers={"Content-Type": "application/json"},
@@ -715,8 +716,9 @@ class OpenAIService:
         max_retries = 3
         base_delay = 3
 
+        timeout_sec = getattr(settings, "gemini_request_timeout_seconds", 300) or 300
         for attempt in range(max_retries):
-            async with httpx.AsyncClient(timeout=180, proxy=self._http_proxy) as http:
+            async with httpx.AsyncClient(timeout=timeout_sec, proxy=self._http_proxy) as http:
                 resp = await http.post(
                     url,
                     headers={"Content-Type": "application/json"},
@@ -809,8 +811,9 @@ class OpenAIService:
             f":generateContent?key={self._gemini_api_key}"
         )
 
+        timeout_sec = getattr(settings, "gemini_request_timeout_seconds", 300) or 300
         try:
-            async with httpx.AsyncClient(timeout=120, proxy=self._http_proxy) as http:
+            async with httpx.AsyncClient(timeout=timeout_sec, proxy=self._http_proxy) as http:
                 resp = await http.post(
                     url,
                     headers={"Content-Type": "application/json"},

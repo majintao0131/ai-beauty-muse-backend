@@ -39,6 +39,7 @@ from app.services.color_diagnosis_service import color_diagnosis_service
 from app.services.body_analysis_service import body_analysis_service
 from app.services.openai_service import openai_service
 from app.services.landing_suggestion_service import landing_suggestion_service
+from app.services.media_access_service import grant_media_access
 
 
 router = APIRouter(prefix="/analysis", tags=["Analysis"])
@@ -107,6 +108,10 @@ async def analyze_face(
         save_dir.mkdir(parents=True, exist_ok=True)
         (save_dir / filename).write_bytes(file_bytes)
         input_image_url = f"/uploads/face/{filename}"
+        try:
+            await grant_media_access(db, current_user.id, f"face/{filename}")
+        except Exception:
+            pass
     except Exception as save_err:
         print(f"⚠️ Face input image save skipped: {save_err}")
 
@@ -206,6 +211,10 @@ async def analyze_face(
                         save_dir.mkdir(parents=True, exist_ok=True)
                         (save_dir / filename).write_bytes(img_bytes)
                         look_image_url = f"/uploads/beauty/{filename}"
+                        try:
+                            await grant_media_access(db, current_user.id, f"beauty/{filename}")
+                        except Exception:
+                            pass
                 except Exception as img_err:
                     print(f"⚠️ Beauty image generation skipped: {img_err}")
 
@@ -321,6 +330,10 @@ async def analyze_face_style(
         save_dir.mkdir(parents=True, exist_ok=True)
         (save_dir / filename).write_bytes(file_bytes)
         input_image_url = f"/uploads/face/{filename}"
+        try:
+            await grant_media_access(db, current_user.id, f"face/{filename}")
+        except Exception:
+            pass
     except Exception as save_err:
         print(f"⚠️ Face-style input image save skipped: {save_err}")
 
@@ -440,9 +453,10 @@ async def edit_face_photo(
         provider=effective_provider,
     )
 
-    # ---- Auto-save to history (only for logged-in users) ----
+    # ---- Auto-save to history and grant media access (only for logged-in users) ----
     if current_user:
         try:
+            await grant_media_access(db, current_user.id, f"{settings.edited_images_subdir}/{filename}")
             await history_service.save_report(
                 db=db,
                 user_id=current_user.id,
@@ -529,6 +543,7 @@ async def edit_face_photo_by_reference(
 
     if current_user:
         try:
+            await grant_media_access(db, current_user.id, f"{settings.edited_images_subdir}/{filename}")
             await history_service.save_report(
                 db=db,
                 user_id=current_user.id,
@@ -626,6 +641,7 @@ async def hair_color_experiment(
 
     if current_user:
         try:
+            await grant_media_access(db, current_user.id, f"{settings.edited_images_subdir}/{filename}")
             await history_service.save_report(
                 db=db,
                 user_id=current_user.id,
