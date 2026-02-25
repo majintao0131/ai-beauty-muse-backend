@@ -125,6 +125,20 @@ class UsageQuota(Base):
     )
 
 
+class UserMediaAccess(Base):
+    """Tracks which users can access which media files (for ownership check before report is saved)."""
+    __tablename__ = "user_media_access"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    path = Column(String(500), nullable=False)  # e.g. "edited/xxx.png", "face/yyy.jpg"
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_user_media_access_user_path", "user_id", "path"),
+    )
+
+
 class ReportHistory(Base):
     """Stores historical reports from all AI features for user review."""
     __tablename__ = "report_history"

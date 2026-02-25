@@ -240,3 +240,16 @@ const handleDevQuickLogin = useCallback(async () => {
 - [ ] mock 模式下，测试手机号使用错误验证码（如 `111111`）登录失败
 - [ ] 将 `sms_provider` 改为 `"aliyun"` 后，测试手机号的万能码失效
 - [ ] APP 端一键登录按钮完整流程正常工作
+
+---
+
+## 七、测试环境：放宽或关闭使用次数限制
+
+面部分析、发型推荐、命理色谱等接口受「每月每功能次数」限制（见 `QUOTA_FREE_LIMIT` / `QUOTA_MEMBER_LIMIT`）。测试时可按需放宽或关闭：
+
+| 方式 | 做法 | 说明 |
+|------|------|------|
+| **关闭限制** | 在 `.env` 中设置 `QUOTA_DISABLED=true` | 所有用户视为无限次数，不再扣减配额 |
+| **仅加大次数** | 在 `.env` 中设置 `QUOTA_FREE_LIMIT=9999`、`QUOTA_MEMBER_LIMIT=9999` | 仍会扣减并统计，只是上限很高 |
+
+修改后需重启后端生效。

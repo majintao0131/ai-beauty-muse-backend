@@ -52,6 +52,8 @@ class Settings(BaseSettings):
 
     # Image edit provider: "gpt-image-1" or "gemini"
     image_edit_provider: str = "gemini"
+    # 调用 Gemini 图片生成/换发时的 HTTP 超时（秒），请求较慢时可适当调大，避免中途断连
+    gemini_request_timeout_seconds: int = 300
 
     # HTTP Proxy（从 .env 加载，留空表示不使用代理）
     http_proxy: Optional[str] = None
@@ -87,7 +89,8 @@ class Settings(BaseSettings):
 
     # Quota Settings (功能使用次数)
     quota_free_limit: int = 10              # 免费用户每月每功能次数
-    quota_member_limit: int = 10           # 会员每月每功能次数
+    quota_member_limit: int = 10            # 会员每月每功能次数
+    quota_disabled: bool = False            # 为 True 时不做次数限制（测试环境可设 QUOTA_DISABLED=true）
 
     # Membership Settings (会员)
     membership_monthly_price: float = 19.9  # 月费 (元)

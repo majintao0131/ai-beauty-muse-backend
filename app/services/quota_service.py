@@ -34,6 +34,8 @@ def _current_year_month() -> str:
 
 def _get_limit(user: User) -> int:
     """Return the monthly limit based on membership status."""
+    if settings.quota_disabled:
+        return 999999  # 测试环境关闭限制时视为无限
     if user.is_membership_active:
         return settings.quota_member_limit
     return settings.quota_free_limit
