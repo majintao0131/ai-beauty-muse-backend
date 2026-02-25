@@ -15,6 +15,7 @@ Image editing supports two providers:
 import io
 import json
 import base64
+import asyncio
 import httpx
 from typing import Optional, List, Dict, Any
 from openai import AsyncOpenAI
@@ -589,6 +590,190 @@ class OpenAIService:
                 return base64.b64decode(inline["data"])
 
         # If no image part found, report what we got
+        text_parts = [p.get("text", "") for p in parts if "text" in p]
+        raise ValueError(
+            "Gemini returned no image in response. "
+            f"Text response: {''.join(text_parts)[:500]}"
+        )
+
+    # ---- Edit image by reference (portrait + hairstyle reference image) ----
+
+    _GEMINI_EDIT_BY_REFERENCE_PROMPT = (
+        "You are a professional salon retoucher. You will receive TWO images.\n\n"
+        "IMAGE 1 = The portrait (the person whose hair you will replace).\n"
+        "IMAGE 2 = The hairstyle reference (the exact hairstyle to copy onto the person in Image 1).\n\n"
+        "TASK: Replace the hair in Image 1 with the hairstyle from Image 2. The result must look as if "
+        "the person in Image 1 went to the salon and got the exact same hairstyle as in Image 2.\n\n"
+        "You MUST copy the reference (Image 2) as closely as possible:\n"
+        "- Hair length (short / medium / long) must match the reference.\n"
+        "- Hair color and tone must match the reference.\n"
+        "- Curl, wave, or straight texture must match the reference.\n"
+        "- Bangs style (none / side-swept / straight / curtain etc.) must match the reference.\n"
+        "- Layering, volume, and parting must match the reference.\n"
+        "- Do not simplify or reinterpret: replicate the reference hairstyle in detail.\n\n"
+        "You MUST keep unchanged: the face, facial features, expression, skin tone, body, clothing, "
+        "background, and lighting of the person in Image 1. Only the hair region is replaced.\n\n"
+        "Output a single photorealistic image: the same person and pose as Image 1, with the hairstyle "
+        "from Image 2 applied faithfully."
+    )
+
+    def _normalize_image_mime(self, content_type: Optional[str]) -> str:
+        """Ensure MIME type is valid for Gemini (e.g. image/jpg -> image/jpeg)."""
+        if not content_type or content_type.strip() == "":
+            return "image/jpeg"
+        ct = content_type.split(";")[0].strip().lower()
+        if ct == "image/jpg":
+            return "image/jpeg"
+        if ct not in ("image/jpeg", "image/png", "image/webp"):
+            return "image/jpeg"
+        return ct
+
+    def _prepare_image_for_gemini(
+        self, image_bytes: bytes, content_type: str, max_size: int = 1536, quality: int = 88
+    ) -> tuple[bytes, str]:
+        """
+        Resize and compress image so the request stays within Gemini limits.
+        Returns (jpeg_bytes, "image/jpeg").
+        """
+        try:
+            img = Image.open(io.BytesIO(image_bytes))
+            img = img.convert("RGB")
+        except Exception as e:
+            raise ValueError(f"Invalid image file: {e}") from e
+        w, h = img.size
+        if max(w, h) > max_size:
+            ratio = max_size / max(w, h)
+            new_w, new_h = int(w * ratio), int(h * ratio)
+            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        return buf.getvalue(), "image/jpeg"
+
+    async def edit_image_by_reference(
+        self,
+        image_bytes: bytes,
+        content_type: str,
+        reference_image_bytes: bytes,
+        reference_content_type: str,
+    ) -> bytes:
+        """
+        Transfer hairstyle from a reference image to the portrait. Uses Gemini
+        generateContent with two images (portrait + reference). Returns raw
+        image bytes of the edited photo.
+        """
+        if not self._gemini_api_key:
+            raise ValueError(
+                "Gemini API key is not configured. "
+                "Face-edit-by-reference requires Gemini. Set GEMINI_API_KEY."
+            )
+
+        mime1 = self._normalize_image_mime(content_type)
+        mime2 = self._normalize_image_mime(reference_content_type)
+
+        # Resize/compress to stay within Gemini size limits and avoid 400
+        try:
+            portrait_bytes, mime1 = self._prepare_image_for_gemini(image_bytes, mime1)
+            ref_bytes, mime2 = self._prepare_image_for_gemini(reference_image_bytes, mime2)
+        except ValueError as e:
+            raise e
+
+        b64_portrait = base64.b64encode(portrait_bytes).decode()
+        b64_ref = base64.b64encode(ref_bytes).decode()
+
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": self._GEMINI_EDIT_BY_REFERENCE_PROMPT},
+                        {
+                            "inlineData": {
+                                "mimeType": mime1,
+                                "data": b64_portrait,
+                            }
+                        },
+                        {
+                            "inlineData": {
+                                "mimeType": mime2,
+                                "data": b64_ref,
+                            }
+                        },
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "responseModalities": ["IMAGE", "TEXT"],
+                "temperature": 0.25,
+            },
+        }
+
+        url = (
+            f"{self._GEMINI_API}/models/{self._gemini_image_edit_model}"
+            f":generateContent?key={self._gemini_api_key}"
+        )
+
+        last_error: Optional[str] = None
+        max_retries = 3
+        base_delay = 3
+
+        for attempt in range(max_retries):
+            async with httpx.AsyncClient(timeout=180, proxy=self._http_proxy) as http:
+                resp = await http.post(
+                    url,
+                    headers={"Content-Type": "application/json"},
+                    json=payload,
+                )
+
+            if resp.status_code == 200:
+                result = resp.json()
+                break
+
+            try:
+                err_body = resp.json()
+                msg = err_body.get("error", {}).get("message", resp.text[:500])
+            except Exception:
+                msg = resp.text[:500] if resp.text else f"HTTP {resp.status_code}"
+            last_error = f"Gemini API error: {msg}"
+
+            # Retry on rate limit / high demand (429, 503 or message contains "high demand"/"try again")
+            should_retry = (
+                resp.status_code in (429, 503)
+                or "high demand" in msg.lower()
+                or "try again" in msg.lower()
+            )
+            if should_retry and attempt < max_retries - 1:
+                delay = base_delay * (2**attempt)
+                await asyncio.sleep(delay)
+                continue
+            raise ValueError(last_error)
+
+        # Check for promptFeedback block (safety, etc.)
+        prompt_feedback = result.get("promptFeedback", {})
+        if prompt_feedback:
+            block_reason = prompt_feedback.get("blockReason")
+            if block_reason:
+                raise ValueError(
+                    f"Gemini blocked the request: {block_reason}. "
+                    "Try different images or check content policy."
+                )
+
+        candidates = result.get("candidates", [])
+        if not candidates:
+            error_msg = result.get("error", {}).get("message", "No candidates returned")
+            raise ValueError(f"Gemini edit-by-reference failed: {error_msg}")
+
+        c0 = candidates[0]
+        if c0.get("finishReason") and c0["finishReason"] not in ("STOP", "MAX_TOKENS"):
+            raise ValueError(
+                f"Gemini finished with reason: {c0.get('finishReason', 'UNKNOWN')}. "
+                "Content may have been filtered."
+            )
+
+        parts = c0.get("content", {}).get("parts", [])
+        for part in parts:
+            inline = part.get("inlineData")
+            if inline and inline.get("data"):
+                return base64.b64decode(inline["data"])
+
         text_parts = [p.get("text", "") for p in parts if "text" in p]
         raise ValueError(
             "Gemini returned no image in response. "

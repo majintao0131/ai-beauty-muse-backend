@@ -458,6 +458,92 @@ async def edit_face_photo(
     return response
 
 
+@router.post("/face-edit-by-reference", response_model=ImageEditResponse)
+async def edit_face_photo_by_reference(
+    image: UploadFile = File(..., description="用户人像照片 (JPEG/PNG/WebP, max 10 MB)"),
+    reference_image: UploadFile = File(..., description="髮型參考圖 (用戶想要的效果髮型照片)"),
+    current_user: Optional[User] = Depends(get_optional_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    根據髮型參考圖換發：上傳人像照 + 髮型參考圖，將參考圖上的髮型遷移到人像上，生成效果圖。
+    用於理髮師溝通卡「髮型參考圖」模式；生成效果圖後可再調用 POST /hairstyle/stylist-card 生成溝通卡。
+
+    **Accepts** ``multipart/form-data``:
+    - ``image`` — 用戶人像照片（必填）
+    - ``reference_image`` — 髮型參考圖（必填）
+
+    **Returns**: 與「人像換發」相同結構（image_url、image_path、modification_applied、provider）。
+    """
+    allowed = settings.allowed_image_types
+    for f, name in [(image, "image"), (reference_image, "reference_image")]:
+        ct = (f.content_type or "").split(";")[0].strip().lower()
+        if ct and ct not in allowed and ct != "image/jpg":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported type for {name}: {f.content_type}. "
+                       f"Allowed: {', '.join(allowed)}",
+            )
+
+    max_bytes = settings.max_upload_size_mb * 1024 * 1024
+    file_bytes = await image.read()
+    ref_bytes = await reference_image.read()
+    if len(file_bytes) > max_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Portrait image too large (max {settings.max_upload_size_mb} MB).",
+        )
+    if len(ref_bytes) > max_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Reference image too large (max {settings.max_upload_size_mb} MB).",
+        )
+
+    try:
+        edited_bytes = await openai_service.edit_image_by_reference(
+            image_bytes=file_bytes,
+            content_type=image.content_type or "image/jpeg",
+            reference_image_bytes=ref_bytes,
+            reference_content_type=reference_image.content_type or "image/jpeg",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Face edit by reference failed: {str(e)}")
+
+    filename = f"{uuid.uuid4().hex}.png"
+    save_dir = Path(settings.upload_dir) / settings.edited_images_subdir
+    save_dir.mkdir(parents=True, exist_ok=True)
+    save_path = save_dir / filename
+    save_path.write_bytes(edited_bytes)
+    relative_url = f"/uploads/{settings.edited_images_subdir}/{filename}"
+
+    response = ImageEditResponse(
+        image_url=relative_url,
+        image_path=str(save_path),
+        modification_applied="已根據參考圖遷移髮型",
+        provider="gemini",
+    )
+
+    if current_user:
+        try:
+            await history_service.save_report(
+                db=db,
+                user_id=current_user.id,
+                report_type="face_edit",
+                title="髮型參考圖換發",
+                data=response.model_dump(mode="json"),
+                summary="根據髮型參考圖生成效果圖",
+                thumbnail_url=relative_url,
+            )
+        except Exception:
+            pass
+
+    return response
+
+
 @router.post("/hair-color-experiment", response_model=ImageEditResponse)
 async def hair_color_experiment(
     image: UploadFile = File(..., description="Face photo (JPEG/PNG/WebP, max 10 MB)"),

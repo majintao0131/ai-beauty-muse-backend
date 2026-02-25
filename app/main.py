@@ -143,6 +143,7 @@ async def api_info():
                 "face": "/api/v1/analysis/face",
                 "face_style": "/api/v1/analysis/face-style  [POST multipart/form-data]",
                 "face_edit": "/api/v1/analysis/face-edit  [POST multipart/form-data: image + instructions]",
+                "face_edit_by_reference": "/api/v1/analysis/face-edit-by-reference  [POST multipart/form-data: image + reference_image]",
                 "hair_color_experiment": "/api/v1/analysis/hair-color-experiment  [POST multipart/form-data: image + hair_color]",
                 "color": "/api/v1/analysis/color",
                 "body": "/api/v1/analysis/body",
