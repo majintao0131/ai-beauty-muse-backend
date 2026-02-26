@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.models.schemas import HealthResponse
 from app.models.database import init_db
-from app.api import analysis, hairstyle, destiny, daily, chat, auth, membership, history, media
+from app.api import analysis, hairstyle, destiny, daily, chat, auth, membership, history, media, oauth
 
 
 @asynccontextmanager
@@ -92,6 +92,8 @@ app.include_router(destiny.router, prefix="/api/v1")
 app.include_router(daily.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(media.router, prefix="/api/v1")
+# OAuth 回调与 Native 换 session（路径与 APP 端 oauth-config-example.md 一致：/api/oauth/...）
+app.include_router(oauth.router, prefix="/api")
 
 # 图片通过鉴权接口 GET /api/v1/media/{path} 获取，不再公开挂载 /uploads
 Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
@@ -167,6 +169,10 @@ async def api_info():
             },
             "media": {
                 "protected_image": "/api/v1/media/{path}  [GET] 鉴权获取图片，需 Bearer token",
+            },
+            "oauth": {
+                "callback": "/api/oauth/callback  [GET/POST] Web 登录回调，门户带 code&state 重定向到此",
+                "mobile": "/api/oauth/mobile  [GET] Native 用 code&state 换 app_session_id",
             },
         },
     }

@@ -94,7 +94,25 @@ class Settings(BaseSettings):
 
     # Membership Settings (会员)
     membership_monthly_price: float = 19.9  # 月费 (元)
-    
+
+    # OAuth（与 APP 端 docs/oauth-config-example.md 对齐）
+    api_base_url: str = "http://localhost:19000"  # 本后端对外根地址，与 APP 的 EXPO_PUBLIC_API_BASE_URL 一致
+    oauth_portal_url: Optional[str] = None        # OAuth 门户地址（用户登录页），与 APP 的 OAUTH_PORTAL_URL 一致
+    oauth_server_url: Optional[str] = None       # OAuth 服务地址（换 token / userinfo），可与门户一致
+    oauth_app_id: Optional[str] = None           # 应用 ID，与门户注册一致
+    oauth_app_secret: Optional[str] = None       # 应用密钥，与门户注册一致
+    oauth_allowed_redirect_uris: list[str] = []  # 允许的 redirect_uri，含 Web 与 Native deep link
+    oauth_token_path: str = "oauth/token"        # 相对 oauth_server_url 的 token 路径
+    oauth_userinfo_path: str = "oauth/userinfo"  # 相对 oauth_server_url 的 userinfo 路径
+    oauth_web_success_redirect: Optional[str] = None  # Web 登录成功后跳转的前端 URL（可选，不设则返回 JSON）
+
+    @field_validator("oauth_allowed_redirect_uris", mode="before")
+    @classmethod
+    def parse_oauth_redirect_uris(cls, v):
+        if isinstance(v, str):
+            return [s.strip() for s in v.split(",") if s.strip()]
+        return v or []
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

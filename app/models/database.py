@@ -50,6 +50,8 @@ class User(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     phone = Column(String(20), unique=True, nullable=True, index=True)
     device_id = Column(String(128), unique=True, nullable=True, index=True)
+    oauth_id = Column(String(128), unique=True, nullable=True, index=True)   # 第三方 OAuth 唯一标识（如 open_id/sub）
+    oauth_provider = Column(String(32), nullable=True)                       # 如 "portal" / "wechat"
     nickname = Column(String(64), nullable=True)
     avatar_url = Column(String(500), nullable=True)
     is_member = Column(Boolean, default=False, nullable=False)

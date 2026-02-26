@@ -526,6 +526,20 @@ class TokenRefreshRequest(BaseModel):
     pass
 
 
+class OAuthMobileUserInfo(BaseModel):
+    """OAuth 登录后返回的简要用户信息（与 APP 约定一致）。"""
+    user_id: str = Field(..., description="用户 ID")
+    nickname: Optional[str] = Field(None, description="昵称")
+    avatar_url: Optional[str] = Field(None, description="头像 URL")
+    is_member: bool = Field(default=False, description="是否为会员")
+
+
+class OAuthMobileResponse(BaseModel):
+    """GET /api/oauth/mobile 响应：APP 将 app_session_id 存为 Bearer token。"""
+    app_session_id: str = Field(..., description="会话 token，后续请求 Header: Authorization: Bearer <此值>")
+    user: OAuthMobileUserInfo = Field(..., description="当前用户简要信息")
+
+
 class UserProfileResponse(BaseModel):
     """User profile with membership and quota info."""
     user_id: str = Field(..., description="用户 ID")

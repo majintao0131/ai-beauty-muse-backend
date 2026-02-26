@@ -5,7 +5,7 @@ Handles JWT creation / validation, phone-based login, and SMS verification.
 import random
 import string
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Tuple
 
 from jose import JWTError, jwt
 from sqlalchemy import select, and_
@@ -207,6 +207,43 @@ class AuthService:
         """Fetch a user by primary key."""
         result = await db.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_or_create_user_by_oauth(
+        db: AsyncSession,
+        oauth_id: str,
+        oauth_provider: str = "portal",
+        nickname: Optional[str] = None,
+        avatar_url: Optional[str] = None,
+    ) -> Tuple[User, bool]:
+        """
+        Look up a user by oauth_id; create one if not found.
+        Returns (user, is_new).
+        """
+        result = await db.execute(select(User).where(User.oauth_id == oauth_id))
+        user = result.scalar_one_or_none()
+        is_new = False
+        if user is None:
+            is_new = True
+            user = User(
+                id=generate_uuid(),
+                oauth_id=oauth_id,
+                oauth_provider=oauth_provider,
+                nickname=nickname or f"用户{oauth_id[-8:]}" if len(oauth_id) >= 8 else "OAuth用户",
+                avatar_url=avatar_url,
+            )
+            db.add(user)
+            await db.commit()
+            await db.refresh(user)
+        else:
+            if nickname is not None and nickname != user.nickname:
+                user.nickname = nickname
+            if avatar_url is not None and avatar_url != user.avatar_url:
+                user.avatar_url = avatar_url
+            if user.nickname != nickname or user.avatar_url != avatar_url:
+                await db.commit()
+                await db.refresh(user)
+        return user, is_new
 
     @staticmethod
     def mask_phone(phone: str) -> str:
